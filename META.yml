@@ -1,0 +1,25 @@
+---
+abstract: 'Simple class to manage a Nginx server'
+author:
+  - 'Chris Prather <chris@prather.org$<gt>'
+build_requires:
+  Test::Exception: 0
+  Test::More: 0
+  Test::WWW::Mechanize: 0
+distribution_type: module
+generated_by: 'Module::Install version 0.77'
+license: perl
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: Nginx-Control
+no_index:
+  directory:
+    - inc
+    - t
+requires:
+  Moose: 0.32
+  MooseX::Types::Path::Class: 0
+resources:
+  license: http://dev.perl.org/licenses/
+version: 0.01

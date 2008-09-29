@@ -1,0 +1,4 @@
+Revision history for Perl extension Nginx-Control
+
+0.01 2008-09-28
+    - Steal Lighttpd-Control
