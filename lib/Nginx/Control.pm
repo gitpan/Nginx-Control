@@ -3,8 +3,10 @@ use Moose;
 use MooseX::Types::Path::Class;
 use Path::Class;
 
-our $VERSION   = '0.01';
+our $VERSION   = '0.02';
 our $AUTHORITY = 'cpan:PERIGRIN';
+our $NGINX_BIN = 'nginx';
+our @SEARCH_PATH = qw( /usr /usr/local /opt/local /sw );
 
 has 'config_file' => (
     is     => 'rw',
@@ -47,6 +49,9 @@ sub post_startup { inner() }
 sub pre_shutdown  { inner() }
 sub post_shutdown { inner() }
 
+sub pre_reload  { inner() }
+sub post_reload { inner() }
+
 ## ---------------------------------
 
 sub _find_server_pid {
@@ -87,16 +92,16 @@ sub _find_binary_path {
     my $self = shift;
 
     my $nginx = do {
-        my $bin = `which nginx`;
+        my $bin = `which $NGINX_BIN`;
         chomp($bin);
         Path::Class::File->new($bin);
     };
 
     return $nginx if -x $nginx;
 
-    for my $prefix (qw(/usr /usr/local /opt/local /sw)) {
+    for my $prefix (@SEARCH_PATH) {
         for my $bindir (qw(bin sbin)) {
-            my $nginx = Path::Class::File->new( $prefix, $bindir, 'nginx' );
+            my $nginx = Path::Class::File->new( $prefix, $bindir, $NGINX_BIN );
             return $nginx if -x $nginx;
         }
     }
@@ -167,7 +172,10 @@ sub stop {
         $self->log("Stoping nginx ...");
         $self->pre_shutdown;
 
-        kill 2, $self->server_pid;
+        my @cli = $self->_construct_command_line(qw( -s stop ));
+        unless ( system(@cli) == 0 ) {
+            kill 2, $self->server_pid;
+        }
 
         $self->post_shutdown;
         $self->log("Nginx stopped.");
@@ -176,6 +184,42 @@ sub stop {
     }
 
     $self->log("... pid_file($pid_file) not found.");
+}
+
+sub reload {
+    my $self     = shift;
+    my $pid_file = $self->pid_file;
+
+    unless ( -f $pid_file ) {
+        $self->log("... pid_file($pid_file) not found.");
+    }
+
+    unless ( $self->is_server_running ) {
+        $self->log(
+"Found pid_file($pid_file), but process does not seem to be running."
+        );
+        return;
+    }
+
+    $self->log("Reloading nginx ...");
+    $self->pre_reload;
+
+    my @cli = $self->_construct_command_line(qw( -s reload ));
+    unless ( system(@cli) == 0 ) {
+        $self->log("Failed to reload Nginx.");
+    }
+
+    $self->post_reload;
+    $self->log("Nginx reloaded.");
+}
+
+sub test {
+    my $self     = shift;
+    my $pid_file = $self->pid_file;
+
+    my @cli = $self->_construct_command_line("-t");
+
+    return ( system(@cli) == 0 );
 }
 
 no Moose;
@@ -207,8 +251,10 @@ Nginx::Control - Simple class to manage a Nginx server
       pid_file    => 'nginx.control.pid',    
   );
   
-  $ctl->start if lc($command) eq 'start';
-  $ctl->stop  if lc($command) eq 'stop';
+  if ($ctl->test) {
+      $ctl->start if lc($command) eq 'start';
+      $ctl->stop  if lc($command) eq 'stop';
+  }
 
 =head1 DESCRIPTION
 
@@ -257,6 +303,19 @@ instance. It will also run the pre_startup and post_startup hooks.
 
 Stops the Nginx server that is currently being controlled by this 
 instance. It will also run the pre_shutdown and post_shutdown hooks.
+
+It will attempt to send a signal to the running master Nginx process
+to stop cleanly, and if this fails will manually kill the process.
+
+=item B<reload>
+
+Reloads the Nginx server configuration without stopping and starting
+the process. This ensures a minimal amount of downtime will occur
+while updating to a new configuration.
+
+=item B<test>
+
+Tests the Nginx server config to make sure it can start successfully.
 
 =item B<is_server_running>
 
@@ -314,6 +373,10 @@ in the test suite).
 =item B<pre_shutdown>
 
 =item B<post_shutdown>
+
+=item B<pre_reload>
+
+=item B<post_reload>
 
 =back
 
